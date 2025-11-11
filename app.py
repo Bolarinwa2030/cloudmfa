@@ -1,20 +1,27 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash
-from flask_sqlalchemy import SQLAlchemy
-from flask_mail import Mail, Message
+import os
 import random
 import string
 import uuid
+from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask_sqlalchemy import SQLAlchemy
+from flask_mail import Mail, Message
 
 app = Flask(__name__)
-# Flask-Mail Configuration (Loaded from Environment Variables)
+
+# ==================== CONFIGURATION ====================
+# Flask-Mail Configuration (loaded securely from Render environment variables)
 app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
 app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
 app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True') == 'True'
 app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 
-# Secret key for sessions
+# Secret key for session management
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'defaultsecret')
+
+# Database configuration
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
+db = SQLAlchemy(app)
 
 mail = Mail(app)
 
@@ -31,6 +38,7 @@ class OTP(db.Model):
     otp_code = db.Column(db.String(6), nullable=False)
     unique_token = db.Column(db.String(100), unique=True, nullable=False)
 
+# Create all tables inside application context
 with app.app_context():
     db.create_all()
 
@@ -69,7 +77,7 @@ def login():
 
     if user:
         otp_code = str(random.randint(100000, 999999))
-        unique_token = str(uuid.uuid4())  # generate unique verification link token
+        unique_token = str(uuid.uuid4())
 
         new_otp = OTP(user_id=user.id, otp_code=otp_code, unique_token=unique_token)
         db.session.add(new_otp)
@@ -77,13 +85,15 @@ def login():
 
         verify_link = url_for('verify_link', token=unique_token, _external=True)
 
-        msg = Message("Your Unique OTP Verification", sender=app.config['MAIL_USERNAME'], recipients=[user.email])
+        msg = Message("Your Unique OTP Verification",
+                      sender=app.config['MAIL_USERNAME'],
+                      recipients=[user.email])
         msg.body = f"""
 Hello {user.username},
 
 Your One-Time Password (OTP) is: {otp_code}
 
-Alternatively, you can click the link below to verify directly:
+Alternatively, click this link to verify directly:
 {verify_link}
 
 If you did not request this, please ignore this email.
